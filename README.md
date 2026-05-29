@@ -52,7 +52,7 @@
 如果你想参与本项目开发或自行构建词库，请遵循以下流程。
 
 ### 环境准备
-- Node.js (v18+)
+- Node.js (v22.11.0+)
 - Java (JDK 17)
 - Android Studio / Android SDK
 
