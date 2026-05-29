@@ -38,3 +38,6 @@ word.json
 roots.json
 模版.json
 *.bin
+android/.cxx
+android/app/.cxx
+android/app/build
