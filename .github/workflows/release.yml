@@ -59,6 +59,7 @@ jobs:
         with:
           name: gradle-daemon-logs
           path: ~/.gradle/daemon/
+          retention-days: 5 # 👈 新增：失败日志只保留 1 天，省空间
 
       - name: 📋 上传 Build 报告
         if: failure()
@@ -66,12 +67,14 @@ jobs:
         with:
           name: build-reports
           path: android/build/reports/
+          retention-days: 5 # 👈 新增：构建报告只保留 1 天，省空间
 
       - name: 🚀 将打包出的 APK 作为产物保存
         uses: actions/upload-artifact@v4
         with:
           name: AiWord-release-apks
           path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 5 # 👈 新增：临时 APK 产物只保留 1 天，省空间
 
       - name: 🎁 自动在 GitHub 创建 Release 发布页
         if: startsWith(github.ref, 'refs/tags/')
