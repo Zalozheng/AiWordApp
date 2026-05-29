@@ -15,8 +15,12 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import Tts from 'react-native-tts';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { Picker } from '@react-native-picker/picker';
+import Sound from 'react-native-sound';
+
+Sound.setCategory('Playback');
 import {
   hasOfflineDict,
   getAllOfflineWords,
@@ -66,7 +70,6 @@ const LibraryScreen = ({ route, navigation }: any) => {
   const [loadingWords, setLoadingWords] = useState(false);
   const [wordsPage, setWordsPage] = useState(1);
   const [totalWordsCount, setTotalWordsCount] = useState(0);
-  const [wordSort, setWordSort] = useState<'time' | 'freq' | 'az'>('az');
   
   // Word Detail States
   const [editingMemoryLines, setEditingMemoryLines] = useState<string[]>([]);
@@ -78,23 +81,38 @@ const LibraryScreen = ({ route, navigation }: any) => {
   const [loadingRoots, setLoadingRoots] = useState(false);
   const [rootsPage, setRootsPage] = useState(1);
   const [totalRootsCount, setTotalRootsCount] = useState(0);
-  const [rootSort, setRootSort] = useState<'time' | 'freq' | 'az'>('az');
   const [rootTypeFilter, setRootTypeFilter] = useState('all'); // 前缀/词根/后缀/组合/其他
+  const [rootContextFilter, setRootContextFilter] = useState('all');
+
+  const [wordSort, setWordSort] = useState('freq'); // freq, az
+  const [wordContextFilter, setWordContextFilter] = useState('all');
+
+  // Suggestions Overlay States
+  const [wordSuggestions, setWordSuggestions] = useState<BriefEntry[]>([]);
+  const [rootSuggestions, setRootSuggestions] = useState<BriefEntry[]>([]);
 
   // Debouncing effect for search inputs
   useEffect(() => {
     const handler = setTimeout(() => {
-      setWordSearch(wordSearchInput);
+      if (wordSearchInput.length > 0) {
+        getAllOfflineWords(wordSearchInput, 5, 0).then(res => setWordSuggestions(res.items));
+      } else {
+        setWordSuggestions([]);
+      }
     }, 250);
     return () => clearTimeout(handler);
   }, [wordSearchInput]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      setRootSearch(rootSearchInput);
+      if (rootSearchInput.length > 0) {
+        getAllOfflineRoots(rootSearchInput, 5, 0, rootTypeFilter).then(res => setRootSuggestions(res.items));
+      } else {
+        setRootSuggestions([]);
+      }
     }, 250);
     return () => clearTimeout(handler);
-  }, [rootSearchInput]);
+  }, [rootSearchInput, rootTypeFilter]);
 
   // Stack details history for back navigation
   const [detailHistory, setDetailHistory] = useState<any[]>([]);
@@ -143,18 +161,32 @@ const LibraryScreen = ({ route, navigation }: any) => {
   // Starred memory arrays
   const [starredWords, setStarredWords] = useState<any[]>([]);
   const [starredRoots, setStarredRoots] = useState<any[]>([]);
-
-  // Dictionary check
   const [dictAvailable, setDictAvailable] = useState(false);
 
-  const loadTheme = async () => {
+  // Settings state for contexts
+  const [contexts, setContexts] = useState<Array<{ id: string; name: string }>>([
+    { id: 'general', name: '🌍 日常' },
+    { id: 'civ6', name: '🏛️ 文明6' },
+    { id: 'linux_ai', name: '🐧 极客' },
+    { id: 'etymology', name: '📖 openai词源' },
+    { id: 'claude', name: '📖 Anthropic词源' },
+  ]);
+
+  const loadSettingsAndTheme = async () => {
     try {
       const themeVal = await AsyncStorage.getItem('ui_theme');
       if (themeVal) {
         setUiTheme(themeVal);
       }
+      const settingsStr = await AsyncStorage.getItem('@app_settings');
+      if (settingsStr) {
+        const settings = JSON.parse(settingsStr);
+        if (settings.contexts && Array.isArray(settings.contexts)) {
+          setContexts(settings.contexts);
+        }
+      }
     } catch (e) {
-      console.error('Failed to load theme in LibraryScreen', e);
+      console.error('Failed to load settings in LibraryScreen', e);
     }
   };
 
@@ -162,9 +194,20 @@ const LibraryScreen = ({ route, navigation }: any) => {
     useCallback(() => {
       checkDictAvailability();
       loadStarredData();
-      loadTheme();
+      loadSettingsAndTheme();
+      loadHistory();
     }, [])
   );
+
+  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const loadHistory = async () => {
+    try {
+      const historyStr = await AsyncStorage.getItem('@word_history');
+      if (historyStr) {
+        setSearchHistory(JSON.parse(historyStr).slice(0, 5));
+      }
+    } catch (e) {}
+  };
 
   // Jump from outside parameters (HomeScreen or notifications)
   useEffect(() => {
@@ -174,6 +217,9 @@ const LibraryScreen = ({ route, navigation }: any) => {
     if (route?.params?.initialWord) {
       setTreeSearch(route.params.initialWord);
       generateTree(route.params.initialWord);
+    }
+    if (route?.params?.initialRoot) {
+      viewRootDetail(route.params.initialRoot);
     }
   }, [route?.params]);
 
@@ -225,82 +271,40 @@ const LibraryScreen = ({ route, navigation }: any) => {
 
   // --- Words Data Query & Filter ---
   const loadWordsData = useCallback(async () => {
-    if (!dictAvailable) {
-      setWordsList([]);
-      setTotalWordsCount(0);
-      return;
-    }
-
     setLoadingWords(true);
     try {
       let filtered: BriefEntry[] = [];
-      filtered = await getAllOfflineWords(wordSearch);
-
-      // Sort
-      if (wordSort === 'az') {
-        filtered.sort((a, b) => a.title.localeCompare(b.title));
-      } else if (wordSort === 'time') {
-        filtered.reverse();
-      }
-
-      setTotalWordsCount(filtered.length);
       const startIdx = (wordsPage - 1) * PAGE_SIZE;
-      const paginated = filtered.slice(startIdx, startIdx + PAGE_SIZE);
-      setWordsList(paginated);
+      
+      // Pass sort and context to the query if offlineDict supports it.
+      // We use wordSort as posFilter for now, but we will fix offlineDict to understand it.
+      const res = await getAllOfflineWords(wordSearch, PAGE_SIZE, startIdx, wordSort, wordContextFilter);
+      filtered = res.items;
+
+      setTotalWordsCount(res.total);
+      setWordsList(filtered);
     } catch (e) {
       console.error(e);
     } finally {
       setLoadingWords(false);
     }
-  }, [dictAvailable, wordSearch, wordSort, wordsPage]);
+  }, [wordSearch, wordsPage, wordSort, wordContextFilter]);
 
   // --- Roots Data Query & Filter ---
   const loadRootsData = useCallback(async () => {
-    if (!dictAvailable) {
-      setRootsList([]);
-      setTotalRootsCount(0);
-      return;
-    }
-
     setLoadingRoots(true);
     try {
-      let filtered: BriefEntry[] = [];
-      filtered = await getAllOfflineRoots(rootSearch);
-      
-      // Filter by Root Type (Prefix / Suffix / Root / Combination)
-      if (rootTypeFilter !== 'all') {
-        filtered = filtered.filter((item) => {
-          const type = (item.type || '').toLowerCase();
-          const isPrefix = type.includes('前缀');
-          const isRoot = type.includes('词根');
-          const isSuffix = type.includes('后缀');
-          const isComb = (isPrefix ? 1 : 0) + (isRoot ? 1 : 0) + (isSuffix ? 1 : 0) >= 2 || item.title.includes('+');
-
-          if (rootTypeFilter === '组合') return isComb;
-          if (rootTypeFilter === '前缀') return isPrefix && !isComb;
-          if (rootTypeFilter === '词根') return isRoot && !isComb;
-          if (rootTypeFilter === '后缀') return isSuffix && !isComb;
-          return false;
-        });
-      }
-
-      // Sort
-      if (rootSort === 'az') {
-        filtered.sort((a, b) => a.title.localeCompare(b.title));
-      } else if (rootSort === 'time') {
-        filtered.reverse();
-      }
-
-      setTotalRootsCount(filtered.length);
       const startIdx = (rootsPage - 1) * PAGE_SIZE;
-      const paginated = filtered.slice(startIdx, startIdx + PAGE_SIZE);
-      setRootsList(paginated);
+      const res = await getAllOfflineRoots(rootSearch, PAGE_SIZE, startIdx, rootTypeFilter, rootContextFilter);
+      
+      setRootsList(res.items);
+      setTotalRootsCount(res.total);
     } catch (e) {
       console.error(e);
     } finally {
       setLoadingRoots(false);
     }
-  }, [dictAvailable, rootSearch, rootTypeFilter, rootSort, rootsPage]);
+  }, [rootSearch, rootsPage, rootTypeFilter, rootContextFilter]);
 
   // Load words when filters, search or range changes
   useEffect(() => {
@@ -699,20 +703,33 @@ const LibraryScreen = ({ route, navigation }: any) => {
     }
   };
 
-  // Play sound pronunciation
-  const playPhoneticSound = (text: string) => {
+  const playPhoneticSound = async (text: string) => {
     try {
-      const globalAny = globalThis as any;
-      if (typeof globalAny.speechSynthesis !== 'undefined') {
-        globalAny.speechSynthesis.cancel();
-        const utterance = new globalAny.SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
-        globalAny.speechSynthesis.speak(utterance);
-      } else {
-        Alert.alert('语音朗读', `🔊 [发音]: ${text}`);
+      const cleanWord = text.replace(/^-|-$/g, '').trim();
+      
+      try {
+        Tts.stop();
+        await Tts.setDefaultLanguage('en-US');
+        Tts.speak(cleanWord);
+        return;
+      } catch (ttsErr) {
+        console.log('Local TTS failed, falling back to online audio...', ttsErr);
       }
-    } catch {
-      Alert.alert('语音朗读', `🔊 [发音]: ${text}`);
+
+      // Fallback to online dictionary voice
+      const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(cleanWord)}&type=2`;
+      const sound = new Sound(url, '', (error) => {
+        if (error) {
+          console.warn('Failed to load online sound', error);
+          Alert.alert('发音失败', '本地发音引擎不可用，且网络加载备用发音也失败了。');
+          return;
+        }
+        sound.play((success) => {
+          sound.release();
+        });
+      });
+    } catch (e) {
+      console.warn('Phonetic sound error:', e);
     }
   };
 
@@ -768,7 +785,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                 </View>
                 <Text style={styles.detailMeaning}>{selectedWordDetail.primary_meaning}</Text>
                 {selectedWordDetail.noun_source ? (
-                  <Text style={styles.detailCoreMeaning}>🎯 名词源追溯：{selectedWordDetail.noun_source}</Text>
+                  <Text style={styles.detailCoreMeaning}>🎯 核心源追溯：{selectedWordDetail.noun_source}</Text>
                 ) : null}
 
                 {/* Edit Memory Lines */}
@@ -823,7 +840,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                 )}
 
                 {/* Bottom Action Triggers */}
-                <View style={styles.detailActionRow}>
+                <View style={[styles.detailActionRow, { flexWrap: 'wrap', gap: 12 }]}>
                   <TouchableOpacity 
                     style={styles.detailActionBtn}
                     onPress={() => toggleStarInWordDetail(selectedWordDetail)}
@@ -833,7 +850,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={[styles.detailActionBtn, { borderColor: theme.primary, backgroundColor: theme.primaryLight, marginLeft: 12 }]}
+                    style={[styles.detailActionBtn, { borderColor: theme.primary, backgroundColor: theme.primaryLight }]}
                     onPress={() => {
                       navigation.navigate('Favorites');
                     }}
@@ -841,7 +858,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                     <Text style={[styles.detailActionBtnText, { color: theme.primaryText }]}>🃏 去收藏夹特训</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={[styles.detailActionBtn, { borderColor: theme.success, backgroundColor: theme.successLight, marginLeft: 12 }]}
+                    style={[styles.detailActionBtn, { borderColor: theme.success, backgroundColor: theme.successLight }]}
                     onPress={() => {
                       const w = selectedWordDetail.word;
                       setDetailHistory([]);
@@ -861,33 +878,74 @@ const LibraryScreen = ({ route, navigation }: any) => {
             <>
               {/* Filtering Toolbar */}
               <View style={styles.searchBarWrapper}>
-                <Icon name="search" size={20} color="#94a3b8" style={styles.searchBarIcon} />
-                <TextInput
-                  style={styles.searchBarInput}
-                  placeholder="检索离线词典..."
-                  value={wordSearchInput}
-                  onChangeText={(text) => { setWordSearchInput(text); setWordsPage(1); }}
-                  autoCapitalize="none"
-                />
-                {wordSearchInput ? (
-                  <TouchableOpacity onPress={() => { setWordSearchInput(''); setWordsPage(1); }}>
-                    <Icon name="close-circle" size={18} color="#94a3b8" />
-                  </TouchableOpacity>
-                ) : null}
+                <View style={[styles.searchBarInputBox, { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }]}>
+                  <TextInput
+                    style={styles.searchBarInput}
+                    placeholder="输入要检索的单词..."
+                    placeholderTextColor="#94a3b8"
+                    value={wordSearchInput}
+                    onChangeText={(text) => { setWordSearchInput(text); setWordsPage(1); }}
+                    autoCapitalize="none"
+                  />
+                  {wordSearchInput ? (
+                    <TouchableOpacity onPress={() => { setWordSearchInput(''); setWordsPage(1); }} style={{ padding: 4 }}>
+                      <Icon name="close-circle" size={18} color="#94a3b8" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <TouchableOpacity style={styles.searchBtn} onPress={() => { setWordSearch(wordSearchInput); setWordSuggestions([]); setWordsPage(1); }}>
+                  <Icon name="search-outline" size={20} color="#fff" />
+                </TouchableOpacity>
               </View>
 
-              {/* Sorted bar and Page stats */}
-              <View style={styles.listStatsBar}>
-                <Text style={styles.listStatsText}>📊 检索数量: {totalWordsCount}</Text>
-                <View style={styles.sortPickerWrapper}>
+              {/* Suggestions Overlay */}
+              {wordSuggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  {wordSuggestions.map((s, idx) => (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={[styles.suggestionItem, idx < wordSuggestions.length - 1 && styles.suggestionItemBorder]}
+                      onPress={() => {
+                        setWordSearchInput(s.title);
+                        setWordSearch(s.title);
+                        setWordSuggestions([]);
+                        setWordsPage(1);
+                        viewWordDetail(s);
+                      }}
+                    >
+                      <Text style={styles.suggestionTitle}>{s.title}</Text>
+                      <Text style={styles.suggestionMeaning} numberOfLines={1}>{s.meaning}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+
+
+              {/* Category type and Sort filter for Words */}
+              <View style={styles.filterControlsRow}>
+                <View style={[styles.filterPickerWrapper, { flex: 1 }]}>
+                  <Picker
+                    selectedValue={wordContextFilter}
+                    style={styles.filterPicker}
+                    dropdownIconColor={theme.primary}
+                    onValueChange={(val) => { setWordContextFilter(val); setWordsPage(1); }}
+                  >
+                    <Picker.Item label="🌍 全部情景" value="all" />
+                    {contexts.map((ctx) => (
+                      <Picker.Item key={ctx.id} label={ctx.name} value={ctx.id} />
+                    ))}
+                  </Picker>
+                </View>
+                <View style={[styles.filterPickerWrapper, { flex: 1 }]}>
                   <Picker
                     selectedValue={wordSort}
-                    style={styles.sortPicker}
+                    style={styles.filterPicker}
                     dropdownIconColor={theme.primary}
-                    onValueChange={(val) => setWordSort(val)}
+                    onValueChange={(val) => { setWordSort(val); setWordsPage(1); }}
                   >
-                    <Picker.Item label="A-Z 排序" value="az" />
-                    <Picker.Item label="最近更新" value="time" />
+                    <Picker.Item label="🔥 查阅频率" value="freq" />
+                    <Picker.Item label="🔤 A-Z 排序" value="az" />
                   </Picker>
                 </View>
               </View>
@@ -898,6 +956,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
               ) : (
                 <View style={{ flex: 1 }}>
                   <FlatList
+                    style={{ flex: 1 }}
                     data={wordsList}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => {
@@ -912,7 +971,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                             </View>
                             <Text style={styles.meaningText} numberOfLines={1}>{item.meaning}</Text>
                           </View>
-                          <Icon name="chevron-forward" size={18} color="#cbd5e1" />
+                          <Icon name="arrow-forward-circle" size={24} color={theme.primary} />
                         </TouchableOpacity>
                       );
                     }}
@@ -920,6 +979,14 @@ const LibraryScreen = ({ route, navigation }: any) => {
                       <View style={styles.emptyContainer}>
                         <Icon name="book-outline" size={50} color="#94a3b8" />
                         <Text style={styles.emptyText}>无匹配单词结果</Text>
+                        {wordSearch ? (
+                          <TouchableOpacity 
+                            style={{ marginTop: 20, backgroundColor: theme.primary, padding: 12, paddingHorizontal: 20, borderRadius: 8, elevation: 2 }}
+                            onPress={() => navigation.navigate('Home', { searchWord: wordSearch })}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>🚀 去引擎深度解析「{wordSearch}」</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                     }
                   />
@@ -1023,7 +1090,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                 </View>
 
                 {/* Bottom triggers */}
-                <View style={styles.detailActionRow}>
+                <View style={[styles.detailActionRow, { flexWrap: 'wrap', gap: 12 }]}>
                   <TouchableOpacity 
                     style={styles.detailActionBtn}
                     onPress={() => toggleStarInRootDetail(selectedRootDetail.root)}
@@ -1033,7 +1100,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={[styles.detailActionBtn, { borderColor: theme.primary, backgroundColor: theme.primaryLight, marginLeft: 12 }]}
+                    style={[styles.detailActionBtn, { borderColor: theme.primary, backgroundColor: theme.primaryLight }]}
                     onPress={() => {
                       navigation.navigate('Favorites');
                     }}
@@ -1041,7 +1108,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                     <Text style={[styles.detailActionBtnText, { color: theme.primaryText }]}>🃏 去收藏夹特训</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={[styles.detailActionBtn, { borderColor: theme.success, backgroundColor: theme.successLight, marginLeft: 12 }]}
+                    style={[styles.detailActionBtn, { borderColor: theme.success, backgroundColor: theme.successLight }]}
                     onPress={() => {
                       const seg = selectedRootDetail.root.segment;
                       setDetailHistory([]);
@@ -1061,52 +1128,81 @@ const LibraryScreen = ({ route, navigation }: any) => {
             <>
               {/* Filtering Toolbar */}
               <View style={styles.searchBarWrapper}>
-                <Icon name="search" size={20} color="#94a3b8" style={styles.searchBarIcon} />
-                <TextInput
-                  style={styles.searchBarInput}
-                  placeholder="检索离线词根..."
-                  value={rootSearchInput}
-                  onChangeText={(text) => { setRootSearchInput(text); setRootsPage(1); }}
-                  autoCapitalize="none"
-                />
-                {rootSearchInput ? (
-                  <TouchableOpacity onPress={() => { setRootSearchInput(''); setRootsPage(1); }}>
-                    <Icon name="close-circle" size={18} color="#94a3b8" />
-                  </TouchableOpacity>
-                ) : null}
+                <View style={[styles.searchBarInputBox, { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }]}>
+                  <TextInput
+                    style={styles.searchBarInput}
+                    placeholder="输入要检索的词根..."
+                    placeholderTextColor="#94a3b8"
+                    value={rootSearchInput}
+                    onChangeText={(text) => { setRootSearchInput(text); setRootsPage(1); }}
+                    autoCapitalize="none"
+                  />
+                  {rootSearchInput ? (
+                    <TouchableOpacity onPress={() => { setRootSearchInput(''); setRootsPage(1); }} style={{ padding: 4 }}>
+                      <Icon name="close-circle" size={18} color="#94a3b8" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <TouchableOpacity style={styles.searchBtn} onPress={() => { setRootSearch(rootSearchInput); setRootSuggestions([]); setRootsPage(1); }}>
+                  <Icon name="search-outline" size={20} color="#fff" />
+                </TouchableOpacity>
               </View>
 
-              {/* Category type filter */}
+              {/* Suggestions Overlay */}
+              {rootSuggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  {rootSuggestions.map((s, idx) => (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={[styles.suggestionItem, idx < rootSuggestions.length - 1 && styles.suggestionItemBorder]}
+                      onPress={() => {
+                        setRootSearchInput(s.title);
+                        setRootSearch(s.title);
+                        setRootSuggestions([]);
+                        setRootsPage(1);
+                        viewRootDetail(s.id);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.suggestionTitle}>{s.title}</Text>
+                        <Text style={styles.rootTypeBadge}>{s.type || '词根'}</Text>
+                      </View>
+                      <Text style={styles.suggestionMeaning} numberOfLines={1}>{s.meaning}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+
+
+              {/* Category type and Context filter */}
               <View style={styles.filterControlsRow}>
-                <View style={styles.filterPickerWrapper}>
+                <View style={[styles.filterPickerWrapper, { flex: 1 }]}>
+                  <Picker
+                    selectedValue={rootContextFilter}
+                    style={styles.filterPicker}
+                    dropdownIconColor={theme.primary}
+                    onValueChange={(val) => { setRootContextFilter(val); setRootsPage(1); }}
+                  >
+                    <Picker.Item label="🌍 全部情景" value="all" />
+                    {contexts.map((ctx) => (
+                      <Picker.Item key={ctx.id} label={ctx.name} value={ctx.id} />
+                    ))}
+                  </Picker>
+                </View>
+                <View style={[styles.filterPickerWrapper, { flex: 1 }]}>
                   <Picker
                     selectedValue={rootTypeFilter}
                     style={styles.filterPicker}
                     dropdownIconColor={theme.primary}
                     onValueChange={(val) => { setRootTypeFilter(val); setRootsPage(1); }}
                   >
-                    <Picker.Item label="🏷️ 所有类型" value="all" />
-                    <Picker.Item label="前缀" value="前缀" />
-                    <Picker.Item label="词根" value="词根" />
-                    <Picker.Item label="后缀" value="后缀" />
-                    <Picker.Item label="组合部件" value="组合" />
+                    <Picker.Item label="🔹 全部分类" value="all" />
+                    <Picker.Item label="📌 前缀" value="前缀" />
+                    <Picker.Item label="🌱 词根" value="词根" />
+                    <Picker.Item label="🪝 后缀" value="后缀" />
+                    <Picker.Item label="🧩 组合词根" value="组合" />
                     <Picker.Item label="其他类型" value="其他" />
-                  </Picker>
-                </View>
-              </View>
-
-              {/* Sorted bar and Page stats */}
-              <View style={styles.listStatsBar}>
-                <Text style={styles.listStatsText}>📊 词根数量: {totalRootsCount}</Text>
-                <View style={styles.sortPickerWrapper}>
-                  <Picker
-                    selectedValue={rootSort}
-                    style={styles.sortPicker}
-                    dropdownIconColor={theme.primary}
-                    onValueChange={(val) => setRootSort(val)}
-                  >
-                    <Picker.Item label="A-Z 排序" value="az" />
-                    <Picker.Item label="时间排序" value="time" />
                   </Picker>
                 </View>
               </View>
@@ -1117,6 +1213,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
               ) : (
                 <View style={{ flex: 1 }}>
                   <FlatList
+                    style={{ flex: 1 }}
                     data={rootsList}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => {
@@ -1132,7 +1229,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                             </View>
                             <Text style={styles.meaningText} numberOfLines={1}>{item.meaning}</Text>
                           </View>
-                          <Icon name="chevron-forward" size={18} color="#cbd5e1" />
+                          <Icon name="arrow-forward-circle" size={24} color={theme.primary} />
                         </TouchableOpacity>
                       );
                     }}
@@ -1140,6 +1237,14 @@ const LibraryScreen = ({ route, navigation }: any) => {
                       <View style={styles.emptyContainer}>
                         <Icon name="leaf-outline" size={50} color="#94a3b8" />
                         <Text style={styles.emptyText}>无匹配词根结果</Text>
+                        {rootSearch ? (
+                          <TouchableOpacity 
+                            style={{ marginTop: 20, backgroundColor: theme.primary, padding: 12, paddingHorizontal: 20, borderRadius: 8, elevation: 2 }}
+                            onPress={() => navigation.navigate('Home', { searchWord: rootSearch })}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>🚀 去引擎深度解析「{rootSearch}」</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                     }
                   />
@@ -1186,15 +1291,21 @@ const LibraryScreen = ({ route, navigation }: any) => {
               <View style={styles.treeSearchRow}>
                 <TextInput
                   style={styles.treeSearchInput}
-                  placeholder="输入单词或词根以生成图谱 (例如: port, tract)..."
+                  placeholder="输入单词或词根以生成图谱..."
                   value={treeSearch}
                   onChangeText={setTreeSearch}
                   autoCapitalize="none"
                 />
+                {treeSearch ? (
+                  <TouchableOpacity onPress={() => setTreeSearch('')} style={{ marginRight: 8 }}>
+                    <Icon name="close-circle" size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity style={styles.treeSearchBtn} onPress={() => generateTree(treeSearch)}>
                   <Text style={styles.treeSearchBtnText}>生成图谱</Text>
                 </TouchableOpacity>
               </View>
+
 
               {loadingTree ? (
                 <ActivityIndicator style={{ marginTop: 40 }} size="large" color={theme.primary} />
@@ -1276,7 +1387,7 @@ const LibraryScreen = ({ route, navigation }: any) => {
                         {/* 3. Right Derived Words Column */}
                         <View style={styles.treeColumn}>
                           <Text style={styles.treeColumnTitle}>🌳 派生衍生词 ({treeData.derivatives.length})</Text>
-                          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false} nestedScrollEnabled={true}>
                             <View style={{ gap: 10 }}>
                               {treeData.derivatives.map((deriv: any, dIdx: number) => (
                                 <View key={dIdx} style={styles.treeNodeWrapper}>
@@ -1365,7 +1476,9 @@ const getStyles = (theme: any) => StyleSheet.create({
   },
   tabBody: {
     flex: 1,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 90,
   },
   warningContainer: {
     flex: 1,
@@ -1389,13 +1502,28 @@ const getStyles = (theme: any) => StyleSheet.create({
   searchBarWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.inputBg,
+    justifyContent: 'space-between',
+    paddingHorizontal: 0,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  searchBarInputBox: {
+    flex: 1,
+    flexShrink: 1,
+    height: 44,
     borderWidth: 1,
     borderColor: theme.inputBorder,
     borderRadius: 8,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    height: 46,
+    backgroundColor: theme.inputBg,
+    marginRight: 8,
+  },
+  searchBtn: {
+    width: 44,
+    height: 44,
+    backgroundColor: theme.primary,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchBarIcon: {
     marginRight: 8,
@@ -1405,6 +1533,41 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontSize: 15,
     color: theme.text,
     padding: 0,
+    height: 44,
+  },
+  suggestionsContainer: {
+    backgroundColor: theme.cardBg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.border,
+    maxHeight: 200,
+    zIndex: 100,
+    position: 'absolute',
+    top: 55, // position below search bar
+    left: 0,
+    right: 0,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+  },
+  suggestionItem: {
+    padding: 12,
+  },
+  suggestionItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  suggestionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.text,
+  },
+  suggestionMeaning: {
+    fontSize: 12,
+    color: theme.textMuted,
+    marginTop: 4,
   },
   filterControlsRow: {
     flexDirection: 'row',
@@ -1434,9 +1597,25 @@ const getStyles = (theme: any) => StyleSheet.create({
     marginBottom: 8,
   },
   listStatsText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '500',
     color: theme.textMuted,
+    opacity: 0.7,
+  },
+  historyChip: {
+    backgroundColor: theme.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignSelf: 'center',
+  },
+  historyChipText: {
+    fontSize: 12,
+    color: theme.primaryText,
+    fontWeight: '600',
   },
   sortPickerWrapper: {
     borderWidth: 1,
@@ -1466,6 +1645,7 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontSize: 17,
     fontWeight: 'bold',
     color: theme.text,
+    flexShrink: 1,
   },
   starBadgeIcon: {
     color: '#f59e0b',
@@ -1698,6 +1878,7 @@ const getStyles = (theme: any) => StyleSheet.create({
   detailSection: {
     marginTop: 20,
   },
+
   detailSectionTitle: {
     fontSize: 14,
     fontWeight: 'bold',
@@ -1787,14 +1968,21 @@ const getStyles = (theme: any) => StyleSheet.create({
     flexDirection: 'row',
     marginTop: 25,
     justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
   },
   detailActionBtn: {
     paddingVertical: 12,
-    paddingHorizontal: 22,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.accent,
-    backgroundColor: theme.accentLight,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    backgroundColor: theme.cardBg,
+    borderWidth: 1.5,
+    borderColor: theme.accentLight,
+    shadowColor: theme.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
   detailActionBtnText: {
     color: theme.accentText,

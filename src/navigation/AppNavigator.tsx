@@ -10,6 +10,7 @@ import HomeScreen from '../screens/HomeScreen';
 import LibraryScreen from '../screens/LibraryScreen';
 import FavoritesScreen from '../screens/FavoritesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import AboutScreen from '../screens/AboutScreen';
 import { LightTheme, DarkTheme } from '../utils/theme';
 import { loadOfflineListCacheIntoMemory, checkAndOptimizeOfflineDict, loadOfflinePreviewsIntoMemory } from '../utils/offlineDict';
 
@@ -89,18 +90,28 @@ const AppNavigator = () => {
             tabBarInactiveTintColor: theme.tabInactive,
             tabBarStyle: {
               backgroundColor: theme.cardBg,
-              borderTopColor: theme.border,
-              height: 60,
-              paddingBottom: 8,
-              paddingTop: 8,
+              borderTopColor: 'transparent',
+              height: 55,
+              paddingBottom: 6,
+              paddingTop: 6,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              elevation: 12,
+              shadowColor: theme.shadowColor,
+              shadowOffset: { width: 0, height: -4 },
+              shadowOpacity: theme.shadowOpacity || 0.05,
+              shadowRadius: 10,
+              position: 'absolute',
+              bottom: 0,
             },
-            headerShown: false, // Screens handle their own headers
+            headerShown: false,
           })}
         >
           <Tab.Screen name="Home" component={HomeScreen} options={{ title: '查词' }} />
           <Tab.Screen name="Library" component={LibraryScreen} options={{ title: '词库' }} />
           <Tab.Screen name="Favorites" component={FavoritesScreen} options={{ title: '收藏夹' }} />
           <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: '设置' }} />
+          <Tab.Screen name="About" component={AboutScreen} options={{ tabBarItemStyle: { display: 'none' }, tabBarButton: () => null }} />
         </Tab.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

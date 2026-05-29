@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Platform,
   View,
   Text,
   StyleSheet,
@@ -11,6 +12,7 @@ import {
   Switch,
   useColorScheme,
   StatusBar,
+  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pick, types, keepLocalCopy } from '@react-native-documents/picker';
@@ -59,22 +61,15 @@ const DEFAULT_JSON_TEMPLATE = `请严格分析单词，仅返回纯JSON对象。
 }`;
 
 const DEFAULT_PROMPTS: Record<string, string> = {
-  general: '你是一个深谙"唯名词论"的日常英语词汇专家。\n请结合极其常见的生活、购物、交流场景进行解析。',
-  civ6: '你是一个《文明6》(Civilization VI) 的资深游戏策划兼历史学家。\n请结合游戏中的科技树、尤里卡触发、世界奇观建设、政策卡组合、时代得分或兵种克制等核心游戏机制进行解析。',
-  linux_ai: '你是一个极其硬核的 Linux 内核开发者兼 AI (CUDA/Ollama) 架构师。\n请结合Linux终端命令、C++底层内存管理、GPU显存分配、深度学习模型架构、或者极客黑客的计算机底层逻辑进行解析。',
-  etymology: `你是一个英语词汇词源专家，你是一个深谙“唯名词论”的日常英语词汇专家。
-请结合极其常见的生活、购物、交流场景进行解析。
-
-当用户输入一个英文单词时：
-如果你具有联网搜索能力，请先查询：
-site:etymonline.com [单词]
-获取真实词源拆解后，再按格式输出。
-禁止凭记忆猜测词根，一律以真实词源为准。`,
-  claude: `你是一个英语词汇词源专家，你是一个深谙“唯名词论”的日常英语词汇专家。
-请结合极其常见的生活、购物、交流场景进行解析。`,
+  general: '你是一个深谙“唯名词论”的日常英语词汇专家。\n请结合极其常见的生活、购物、交流场景进行解析。\n\n(提示：您可以通过点击【设为基础模板】来覆盖本段系统内置的文字)',
+  civ6: '你是一个《文明6》(Civilization VI) 的资深游戏策划兼历史学家。\n请结合游戏中的科技树、尤里卡触发、世界奇观建设、政策卡组合、时代得分或兵种克意等核心游戏机制进行解析。\n\n(这是文明6模式的专属提示词)',
+  linux_ai: '你是一个极其硬核的 Linux 内核开发者兼 AI (CUDA/Ollama) 架构师。\n请结合Linux终端命令、C++底层内存管理、GPU显存分配、深度学习模型架构、或者极客黑客的计算机底层逻辑进行解析。\n\n(这是极客模式的专属提示词)',
+  claude: '你是一个英语词汇词源专家，你是一个深谙“唯名词论”的日常英语词汇专家。\n请结合极其常见的生活、购物、交流场景进行解析。\n\n仅返回如下纯JSON对象，不要有任何多余文字，memory_lines必须严格输出8个字符串元素：\n{\n  "word": "String",\n  "display_breakdown": "String (用点分隔音节，如 ex.e.cu.tion)",\n  "phonetic_us": "String (美式音标)",\n  "primary_meaning": "String (最常用中文意思)",\n  "noun_source": "String (基础来源名词，格式：英文 (中文))",\n  "parts": [\n    {\n      "segment": "String",\n      "type": "String (词根/前缀/后缀)",\n      "meaning": "String (中文含义)",\n      "deep_origin": "String (历史渊源，内部严禁使用双引号)",\n      "derivatives": ["String"]\n    }\n  ],\n  "memory_lines": [\n    "1. 中文(`英文部件`) + 中文(`英文部件`) → **完整单词**(中文释义)。",\n    "",\n    "2. 💡 情景联想：结合【{CONTEXT}】写画面，30字以内！",\n    "",\n    "3. 极简英文例句带括号中文翻译。",\n    "",\n    "4. 📖 词源故事：用1~2句话讲历史典故或来源趣事，50字以内。",\n    ""\n  ]\n}\n\n(这是词源模式的专属提示词，基于claude真实词源数据)',
+  etymology: '你是一个英语词汇词源专家，你是一个深谙“唯名词论”的日常英语词汇专家。\n请结合极其常见的生活、购物、交流场景进行解析。\n\n当用户输入一个英文单词时：\n如果你具有联网搜索能力，请先查询：\nsite:etymonline.com [单词]\n获取真实词源拆解后，再按格式输出。\n禁止凭记忆猜测词根，一律以真实词源为准。\n\n仅返回如下纯JSON对象，不要有任何多余文字：\n{\n  "word": "String",\n  "display_breakdown": "String (用点分隔音节，如 ex.e.cu.tion)",\n  "phonetic_us": "String (美式音标)",\n  "primary_meaning": "String (最常用中文意思)",\n  "noun_source": "String (基础来源名词，格式：英文 (中文))",\n  "parts": [\n    {\n      "segment": "String",\n      "type": "String (词根/前缀/后缀)",\n      "meaning": "String (中文含义)",\n      "deep_origin": "String (历史渊源，内部严禁使用双引号)",\n      "derivatives": ["String"]\n    }\n  ],\n  "memory_lines": [\n    "1. 中文(`英文部件`) + 中文(`英文部件`) → **完整单词**(中文释义)。",\n    "",\n    "2. 💡 情景联想：结合【{CONTEXT}】写画面，30字以内！",\n    "",\n    "3. 极简英文例句带括号中文翻译。",\n    "",\n    "4. 📖 词源故事：用1~2句话讲历史典故或来源趣事，50字以内。",\n    ""\n  ]\n}\n\n(这是词源模式的专属提示词，基于 etymonline.com 真实数据。注意：部分 API 并不支持联网搜索功能)',
+  custom: ""
 };
 
-const SettingsScreen = () => {
+const SettingsScreen = ({ navigation }: any) => {
   const systemScheme = useColorScheme();
   const [uiTheme, setUiTheme] = useState('system');
 
@@ -99,7 +94,8 @@ const SettingsScreen = () => {
   const [dictStats, setDictStats] = useState({ exists: false, totalKeys: 0, sizeBytes: 0 });
   const [importingDict, setImportingDict] = useState(false);
 
-  // Favorite Folders State
+  // Offline Dict URL state
+  const [downloadUrl, setDownloadUrl] = useState('');
   const [folders, setFolders] = useState<any[]>(DEFAULT_FOLDERS);
 
   // Scenario Mode States
@@ -122,12 +118,25 @@ const SettingsScreen = () => {
   const [dataActionContext, setDataActionContext] = useState(false); // Global vs active scenario only
   const [importMode, setImportMode] = useState(false); // Merge vs Overwrite/Replace
 
+  // Zen Mode Editor State
+  const [zenModeVisible, setZenModeVisible] = useState(false);
+  const [zenModeContent, setZenModeContent] = useState('');
+  const [zenModeType, setZenModeType] = useState(''); // 'prompt' or 'json'
+
   // Preset Models List
   const presetModels = [
-    { label: 'DeepSeek Chat', value: 'deepseek-chat' },
+    // OpenAI Models
+    { label: 'GPT-4o Mini 搜索版', value: 'gpt-4o-mini-search-preview-2025-03-11' },
     { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
     { label: 'GPT-4o', value: 'gpt-4o' },
+    { label: 'DeepSeek Chat', value: 'deepseek-chat' },
+    { label: 'DeepSeek v4 Flash', value: 'deepseek-v4-flash' },
+    { label: 'GLM-4', value: 'glm-4' },
+    // Claude Models
     { label: 'Claude 3.5 Sonnet', value: 'claude-3-5-sonnet-20240620' },
+    { label: 'Claude 3.5 Haiku', value: 'claude-haiku-4-5-20251001' },
+    { label: 'Claude Opus 4.7', value: 'claude-opus-4-7' },
+    { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
   ];
 
   useEffect(() => {
@@ -240,6 +249,38 @@ const SettingsScreen = () => {
         },
       },
     ]);
+  };
+
+  const handleDownloadAndImportOfflineDict = async () => {
+    if (!downloadUrl || !downloadUrl.startsWith('http')) {
+      Alert.alert('错误', '请输入以 http/https 开头的有效直接下载链接。');
+      return;
+    }
+    setImportingDict(true);
+    try {
+      const destPath = RNFS.DocumentDirectoryPath + '/temp_downloaded_dict.json';
+      if (await RNFS.exists(destPath)) {
+        await RNFS.unlink(destPath);
+      }
+      
+      const downloadResult = await RNFS.downloadFile({
+        fromUrl: downloadUrl,
+        toFile: destPath,
+        background: true,
+      }).promise;
+      
+      if (downloadResult.statusCode === 200) {
+        await importOfflineDict(destPath);
+        await loadDictStats();
+        Alert.alert('下载并导入成功', '远程词库文件已成功加载到本地！');
+      } else {
+        throw new Error(`HTTP 状态码错误: ${downloadResult.statusCode}`);
+      }
+    } catch (err: any) {
+      Alert.alert('下载/导入失败', err.message || '网络或文件解析错误');
+    } finally {
+      setImportingDict(false);
+    }
   };
 
   const handleClearCache = async () => {
@@ -788,15 +829,31 @@ const SettingsScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+      <View style={styles.container}>
+      <ScrollView keyboardShouldPersistTaps="handled">
         <StatusBar barStyle={theme.statusBar} backgroundColor={theme.cardBg} />
       <View style={styles.header}>
-        <Text style={styles.title}>⚙️ 偏好设置</Text>
+        <View style={{flexDirection:"row", alignItems:"center"}}><Icon name="options" size={24} color={theme.text} style={{marginRight:8}} /><Text style={styles.title}>偏好设置</Text></View>
       </View>
 
-      {/* UI Theme Selection Card */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🎨 主题与外观设置</Text>
+      {/* About Screen Banner */}
+      <TouchableOpacity 
+        style={[styles.section, { backgroundColor: theme.primary, borderTopWidth: 0, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+        onPress={() => navigation.navigate('About')}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Icon name="book-outline" size={28} color="#fff" style={{marginRight: 12}} />
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#fff' }}>App介绍与使用指南</Text>
+            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 4 }}>点击查看词库统计及核心功能说明</Text>
+          </View>
+        </View>
+        <Text style={{ fontSize: 20, color: '#fff' }}>→</Text>
+      </TouchableOpacity>
+
+      {/* UI Settings Card */}
+      <View style={[styles.section, { borderTopWidth: 4, borderTopColor: '#10b981' }]}>
+        <Text style={[styles.sectionTitle, { color: '#10b981' }]}><Icon name="color-palette-outline" size={18} color="#10b981" style={{marginRight:6}} />核心功能: UI与主题设置</Text>
         <Text style={styles.label}>界面主题模式 (Theme Mode)</Text>
         <View style={styles.pickerWrapper}>
           <Picker
@@ -812,9 +869,9 @@ const SettingsScreen = () => {
         </View>
       </View>
 
-      {/* Offline Dictionary Config Card */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>💾 离线本地词典数据</Text>
+      {/* API Config Card */}
+      <View style={[styles.section, { borderTopWidth: 4, borderTopColor: '#38bdf8' }]}>
+        <Text style={[styles.sectionTitle, { color: '#38bdf8' }]}><Icon name="hardware-chip-outline" size={18} color="#38bdf8" style={{marginRight:6}} />api或者不用api</Text>
         
         <View style={styles.dictStatsCard}>
           <Text style={styles.statsLabel}>
@@ -834,26 +891,41 @@ const SettingsScreen = () => {
         {importingDict ? (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="small" color={theme.primary} />
-            <Text style={styles.loaderText}>正在解析并导入庞大的 word.json，请稍候...</Text>
+            <Text style={styles.loaderText}>正在解析并导入庞大的词库数据，请稍候...</Text>
           </View>
         ) : (
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.actionBtnOutline} onPress={handleImportOfflineDict}>
-              <Text style={styles.actionBtnTextOutline}>📥 导入 word.json</Text>
-            </TouchableOpacity>
-            {dictStats.exists && (
-              <TouchableOpacity style={[styles.actionBtnOutline, styles.dangerBtn]} onPress={handleClearOfflineDict}>
-                <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>🗑️ 删除词库</Text>
+          <>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.actionBtnOutline} onPress={handleImportOfflineDict}>
+                <Text style={styles.actionBtnTextOutline}><Icon name="folder-open-outline" size={18} color={theme.primaryText} style={{marginRight:6}} /><Text style={styles.actionBtnTextOutline}>从本地选择导入</Text></Text>
               </TouchableOpacity>
-            )}
-          </View>
+              {dictStats.exists && (
+                <TouchableOpacity style={[styles.actionBtnOutline, styles.dangerBtn]} onPress={handleClearOfflineDict}>
+                  <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}><Icon name="trash-outline" size={18} color={theme.dangerText} style={{marginRight:6}} /><Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>删除词库</Text></Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={{ marginTop: 15 }}>
+              <Text style={styles.label}>或者：提供远程下载直链 (如 GitHub Raw)</Text>
+              <TextInput
+                style={styles.input}
+                value={downloadUrl}
+                onChangeText={setDownloadUrl}
+                placeholder="https://raw.githubusercontent.com/..."
+                autoCapitalize="none"
+              />
+              <TouchableOpacity style={[styles.actionBtnOutline, { marginTop: 6, borderColor: theme.success, backgroundColor: theme.successLight }]} onPress={handleDownloadAndImportOfflineDict}>
+                <Text style={[styles.actionBtnTextOutline, { color: theme.success }]}><Icon name="cloud-download-outline" size={18} color={theme.success} style={{marginRight:6}} /><Text style={[styles.actionBtnTextOutline, { color: theme.success }]}>从直链下载并自动导入</Text></Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
-        <Text style={styles.hint}>请在本地选择导入包含 W: (单词) 和 R: (词根) 键结构的 JSON 词库以支持离线查词。</Text>
+        <Text style={styles.hint}>支持格式为 JSON。必须包含 W: (单词) 和 R: (词根) 键结构的完整对象字典，且非数组形式。</Text>
       </View>
 
       {/* API Protocol & Provider Configuration Card */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🌐 API 服务商与协议</Text>
+      <View style={[styles.section, { borderTopWidth: 4, borderTopColor: '#3b82f6' }]}>
+        <Text style={[styles.sectionTitle, { color: '#3b82f6' }]}><Icon name="globe-outline" size={18} color="#3b82f6" style={{marginRight:6}} />API 服务商与协议</Text>
 
         <Text style={styles.label}>API 协议类型</Text>
         <View style={styles.pickerWrapper}>
@@ -935,32 +1007,10 @@ const SettingsScreen = () => {
         />
       </View>
 
-      {/* Starred Favorite Folders Manager */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>⭐ 收藏分组管理</Text>
-          <TouchableOpacity style={styles.addContextBtn} onPress={handleAddFolder}>
-            <Text style={styles.addContextBtnText}>+ 新建分组</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.foldersList}>
-          {folders.map((f, idx) => (
-            <View key={idx} style={styles.folderRowItem}>
-              <Text style={styles.folderRowName}>{f.name}</Text>
-              {f.id !== 'fav_default' && (
-                <TouchableOpacity onPress={() => handleDeleteFolder(f.id)}>
-                  <Icon name="trash" size={18} color="#ef4444" />
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
-        </View>
-      </View>
 
       {/* Global Optimization & Fallback Rules */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>⚙️ 全局查找与策略设置</Text>
+      <View style={[styles.section, { borderTopWidth: 4, borderTopColor: '#64748b' }]}>
+        <Text style={[styles.sectionTitle, { color: '#64748b' }]}><Icon name="search-outline" size={18} color="#64748b" style={{marginRight:6}} />全局查找与策略设置</Text>
 
         <Text style={styles.label}>查词历史保留上限</Text>
         <TextInput
@@ -1012,12 +1062,12 @@ const SettingsScreen = () => {
         </View>
       </View>
 
-      {/* Scenario Modes (情景模式) Config Card */}
-      <View style={styles.section}>
+      {/* Scenario Modes Config Card */}
+      <View style={[styles.section, { borderTopWidth: 4, borderTopColor: '#38bdf8' }]}>
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>🎭 情景模式配置</Text>
-          <TouchableOpacity style={styles.addContextBtn} onPress={handleAddContext}>
-            <Text style={styles.addContextBtnText}>+ 新建情景</Text>
+          <Text style={[styles.sectionTitle, { color: '#38bdf8' }]}><Icon name="document-text-outline" size={18} color="#38bdf8" style={{marginRight:6}} />情景模式配置</Text>
+          <TouchableOpacity style={[styles.addContextBtn, { flexDirection: "row", alignItems: "center" }]} onPress={handleAddContext}>
+            <Text style={styles.addContextBtnText}><Icon name="add-circle-outline" size={16} color={theme.primary} style={{marginRight:2}} /><Text style={styles.addContextBtnText}>新建情景</Text></Text>
           </TouchableOpacity>
         </View>
 
@@ -1051,55 +1101,64 @@ const SettingsScreen = () => {
           <Text style={styles.label}>系统提示词 (Prompt)</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity onPress={handleResetContextPrompt}>
-              <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: 'bold' }}>🔄 重置</Text>
+              <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: 'bold' }}><Icon name="refresh-outline" size={14} color="#f59e0b" style={{marginRight:2}} /><Text style={{ fontSize: 12, color: "#f59e0b", fontWeight: "bold" }}>重置</Text></Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleSetPromptAsDefault}>
-              <Text style={{ fontSize: 12, color: theme.primaryText, fontWeight: 'bold' }}>💾 设为专属模板</Text>
+              <Text style={{ fontSize: 12, color: theme.primaryText, fontWeight: 'bold' }}><Icon name="save-outline" size={14} color={theme.primaryText} style={{marginRight:2}} /><Text style={{ fontSize: 12, color: theme.primaryText, fontWeight: "bold" }}>设为专属模板</Text></Text>
             </TouchableOpacity>
           </View>
         </View>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={editPrompt}
-          onChangeText={setEditPrompt}
-          placeholder="输入该情景下大模型的专属提示词(System Prompt)..."
-          multiline
-          textAlignVertical="top"
-        />
+        <TouchableOpacity
+          style={[styles.input, { height: 80, justifyContent: 'center' }]}
+          onPress={() => {
+            setZenModeType('prompt');
+            setZenModeContent(editPrompt);
+            setZenModeVisible(true);
+          }}
+        >
+          <Text style={{ color: theme.textMuted, fontSize: 13 }} numberOfLines={3}>
+            {editPrompt ? editPrompt : "点击进行全屏大字号编辑(Zen Mode)..."}
+          </Text>
+        </TouchableOpacity>
 
         {!['general', 'civ6', 'linux_ai', 'etymology', 'claude'].includes(activeContextId) && (
-          <TouchableOpacity style={styles.delContextBtn} onPress={handleDeleteContext}>
-            <Text style={styles.delContextBtnText}>🗑️ 删除当前情景</Text>
+          <TouchableOpacity style={[styles.delContextBtn, { flexDirection: "row", justifyContent: "center" }]} onPress={handleDeleteContext}>
+            <Text style={styles.delContextBtnText}><Icon name="trash-bin-outline" size={16} color={theme.dangerText} style={{marginRight:2}} /><Text style={styles.delContextBtnText}>删除当前情景</Text></Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* Global JSON structure template */}
-      <View style={styles.section}>
+      <View style={[styles.section, { borderTopWidth: 4, borderTopColor: '#a855f7' }]}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <Text style={styles.sectionTitle}>🧩 全局 JSON 结构约束</Text>
+          <Text style={[styles.sectionTitle, { color: '#a855f7' }]}><Icon name="extension-puzzle-outline" size={18} color="#a855f7" style={{marginRight:6}} />全局JSON 结构约束 一般不改除非你看了文档</Text>
           <TouchableOpacity onPress={handleResetGlobalJson}>
-            <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: 'bold' }}>🔄 恢复默认</Text>
+            <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: 'bold' }}><Icon name="refresh-circle-outline" size={14} color="#f59e0b" style={{marginRight:2}} /><Text style={{ fontSize: 12, color: "#f59e0b", fontWeight: "bold" }}>恢复默认</Text></Text>
           </TouchableOpacity>
         </View>
-        <TextInput
-          style={[styles.input, styles.textArea, { fontFamily: 'monospace', fontSize: 12 }]}
-          value={globalJsonTemplate}
-          onChangeText={setGlobalJsonTemplate}
-          multiline
-          textAlignVertical="top"
-        />
+        <TouchableOpacity
+          style={[styles.input, { height: 80, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }]}
+          onPress={() => {
+            setZenModeType('json');
+            setZenModeContent(globalJsonTemplate);
+            setZenModeVisible(true);
+          }}
+        >
+          <Text style={{ color: theme.textMuted, fontFamily: 'monospace', fontSize: 12 }} numberOfLines={3}>
+            {globalJsonTemplate ? globalJsonTemplate : "点击进行全屏大字号编辑..."}
+          </Text>
+        </TouchableOpacity>
         <Text style={styles.hint}>约束大模型输出数据项，一般在了解插件接口要求下修改。</Text>
       </View>
 
       {/* Dynamic Data management Card */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🗄️ 词库数据管理 (导入/导出/清除)</Text>
+      <View style={[styles.section, { borderTopWidth: 4, borderTopColor: '#ef4444' }]}>
+        <Text style={[styles.sectionTitle, { color: '#ef4444' }]}><Icon name="server-outline" size={18} color="#ef4444" style={{marginRight:6}} />词库数据管理 (导出/导入/清除)</Text>
         
         {/* Checkbox Rows */}
         <View style={styles.switchRow}>
           <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={styles.switchLabel}>{dataActionContext ? '🌍 仅限当前情景' : '🌍 全局数据模式'}</Text>
+            <Text style={styles.switchLabel}>{dataActionContext ? '仅限当前情景' : '全局数据模式'}</Text>
             <Text style={styles.switchSubLabel}>{dataActionContext ? '数据导入、导出、清除动作仅作用于当前情景' : '数据操作将影响全部情景下的记录'}</Text>
           </View>
           <Switch
@@ -1112,7 +1171,7 @@ const SettingsScreen = () => {
 
         <View style={styles.switchRow}>
           <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={styles.switchLabel}>{importMode ? '📥 替换/覆盖模式导入' : '📥 合并模式导入'}</Text>
+            <Text style={styles.switchLabel}>{importMode ? '替换/覆盖模式导入' : '合并模式导入'}</Text>
             <Text style={styles.switchSubLabel}>{importMode ? '导入时如遇重复项将直接覆盖旧记录' : '合并模式将保留旧修改并合并新记录'}</Text>
           </View>
           <Switch
@@ -1125,7 +1184,7 @@ const SettingsScreen = () => {
 
         {/* Data Operation Buttons Grid */}
         <View style={{ marginTop: 15 }}>
-          <Text style={[styles.label, { color: theme.primaryText, fontWeight: 'bold' }]}>📤 导出数据备份</Text>
+          <Text style={[styles.label, { color: theme.primaryText, fontWeight: 'bold' }]}><Icon name="cloud-upload-outline" size={16} color={theme.primaryText} style={{marginRight:6, marginTop:10}} /><Text style={[styles.label, { color: theme.primaryText, fontWeight: "bold", marginTop: 10 }]}>导出数据备份</Text></Text>
           <View style={styles.buttonRow}>
             <TouchableOpacity style={styles.actionBtnOutline} onPress={() => exportData('words')}>
               <Text style={styles.actionBtnTextOutline}>单词</Text>
@@ -1138,7 +1197,7 @@ const SettingsScreen = () => {
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.label, { color: theme.successText, fontWeight: 'bold', marginTop: 10 }]}>📥 导入外部数据</Text>
+          <Text style={[styles.label, { color: theme.successText, fontWeight: 'bold', marginTop: 10 }]}><Icon name="cloud-download-outline" size={16} color={theme.successText} style={{marginRight:6, marginTop:10}} /><Text style={[styles.label, { color: theme.successText, fontWeight: "bold", marginTop: 10 }]}>导入外部数据</Text></Text>
           <View style={styles.buttonRow}>
             <TouchableOpacity style={[styles.actionBtnOutline, { borderColor: theme.success, backgroundColor: theme.successLight }]} onPress={() => importData('words')}>
               <Text style={[styles.actionBtnTextOutline, { color: theme.successText }]}>单词</Text>
@@ -1151,7 +1210,7 @@ const SettingsScreen = () => {
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.label, { color: theme.dangerText, fontWeight: 'bold', marginTop: 10 }]}>🗑️ 危险数据清除</Text>
+          <Text style={[styles.label, { color: theme.dangerText, fontWeight: 'bold', marginTop: 10 }]}><Icon name="warning-outline" size={16} color={theme.dangerText} style={{marginRight:6, marginTop:10}} /><Text style={[styles.label, { color: theme.dangerText, fontWeight: "bold", marginTop: 10 }]}>危险数据清除</Text></Text>
           <View style={styles.buttonRow}>
             <TouchableOpacity style={[styles.actionBtnOutline, styles.dangerBtn]} onPress={() => deleteData('words')}>
               <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>单词</Text>
@@ -1167,30 +1226,77 @@ const SettingsScreen = () => {
       </View>
 
       {/* Data Cleaning Actions */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: theme.dangerText }]}>🧹 缓存清理与恢复</Text>
+      <View style={[styles.section, { borderTopWidth: 4, borderTopColor: '#dc2626' }]}>
+        <Text style={[styles.sectionTitle, { color: '#dc2626' }]}><Icon name="brush-outline" size={18} color="#dc2626" style={{marginRight:6}} />缓存清理与恢复</Text>
         
         <View style={styles.buttonCol}>
           <TouchableOpacity style={[styles.actionBtnOutline, styles.dangerBtn]} onPress={handleClearCache}>
-            <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>⚡ 清除 AI 查词本地缓存</Text>
+            <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}><Icon name="flash-outline" size={18} color={theme.dangerText} style={{marginRight:6}} /><Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>清除 AI 查词缓存</Text></Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={[styles.actionBtnOutline, styles.dangerBtn, { marginTop: 10 }]} onPress={handleClearHistory}>
-            <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>🧹 清空查词历史记录</Text>
+            <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}><Icon name="time-outline" size={18} color={theme.dangerText} style={{marginRight:6}} /><Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>清空查词历史记录</Text></Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={[styles.actionBtnOutline, styles.dangerBtn, { marginTop: 10 }]} onPress={handleClearAllData}>
-            <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>🚨 恢复出厂设置 (抹除所有)</Text>
+            <Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}><Icon name="warning-outline" size={18} color={theme.dangerText} style={{marginRight:6}} /><Text style={[styles.actionBtnTextOutline, { color: theme.dangerText }]}>恢复出厂设置 (抹除所有)</Text></Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={saveSettings}>
-        <Text style={styles.saveBtnText}>💾 保存所有配置</Text>
+      <TouchableOpacity style={[styles.saveBtn, { flexDirection: "row", justifyContent: "center" }]} onPress={saveSettings}>
+        <Text style={styles.saveBtnText}><Icon name="checkmark-done-outline" size={22} color="#fff" style={{marginRight:8}} /><Text style={styles.saveBtnText}>保存所有配置</Text></Text>
       </TouchableOpacity>
       
       <View style={{ height: 40 }} />
       </ScrollView>
+      </View>
+
+      <Modal
+        visible={zenModeVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setZenModeVisible(false)}
+      >
+        <View style={styles.zenModeBackdrop}>
+          <View style={styles.zenModeModal}>
+            <View style={styles.zenModeHeader}>
+              <Text style={styles.zenModeTitle}>
+                {zenModeType === 'prompt' ? '编辑专属提示词' : '编辑 JSON 结构'}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={[styles.actionBtnOutline, { flex: 0, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: theme.primary, borderColor: theme.primary }]}
+                  onPress={() => {
+                    if (zenModeType === 'prompt') {
+                      setEditPrompt(zenModeContent);
+                    } else {
+                      setGlobalJsonTemplate(zenModeContent);
+                    }
+                    setZenModeVisible(false);
+                  }}
+                >
+                  <View style={{flexDirection:"row", alignItems:"center"}}><Icon name="save-outline" size={16} color="#fff" style={{marginRight:2}} /><Text style={[styles.actionBtnTextOutline, { color: "#fff", fontWeight: "bold" }]}>保存</Text></View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtnOutline, { flex: 0, paddingVertical: 6, paddingHorizontal: 10 }]}
+                  onPress={() => setZenModeVisible(false)}
+                >
+                  <Text style={styles.actionBtnTextOutline}>❌ 取消</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <TextInput
+              style={styles.zenModeTextArea}
+              value={zenModeContent}
+              onChangeText={setZenModeContent}
+              multiline
+              textAlignVertical="top"
+              autoFocus
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1199,6 +1305,7 @@ const getStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.background,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
   },
   header: {
     padding: 20,
@@ -1213,25 +1320,25 @@ const getStyles = (theme: any) => StyleSheet.create({
     color: theme.text,
   },
   section: {
-    marginTop: 16,
     backgroundColor: theme.cardBg,
-    padding: 16,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 12,
-    marginHorizontal: 12,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 3,
     shadowColor: theme.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: theme.shadowOpacity,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    overflow: 'hidden',
+    marginHorizontal: 16,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    flexWrap: 'wrap',
+    rowGap: 8,
   },
   sectionTitle: {
     fontSize: 16,
@@ -1274,13 +1381,16 @@ const getStyles = (theme: any) => StyleSheet.create({
   },
   actionBtnOutline: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: theme.primary,
-    backgroundColor: theme.primaryLight,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    elevation: 0,
+    shadowOpacity: 0,
   },
   actionBtnTextOutline: {
     color: theme.primaryText,
@@ -1289,7 +1399,7 @@ const getStyles = (theme: any) => StyleSheet.create({
   },
   dangerBtn: {
     borderColor: theme.danger,
-    backgroundColor: theme.dangerLight,
+    backgroundColor: 'transparent',
   },
   loaderContainer: {
     paddingVertical: 12,
@@ -1406,10 +1516,12 @@ const getStyles = (theme: any) => StyleSheet.create({
     lineHeight: 18,
   },
   addContextBtn: {
-    backgroundColor: theme.primaryLight,
+    backgroundColor: 'transparent',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.primary,
   },
   addContextBtnText: {
     color: theme.primary,
@@ -1419,7 +1531,7 @@ const getStyles = (theme: any) => StyleSheet.create({
   delContextBtn: {
     paddingVertical: 10,
     alignItems: 'center',
-    backgroundColor: theme.dangerLight,
+    backgroundColor: 'transparent',
     borderRadius: 10,
     borderWidth: 1,
     borderColor: theme.danger,
@@ -1431,21 +1543,68 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontWeight: 'bold',
   },
   saveBtn: {
-    margin: 20,
+    marginHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 30,
     backgroundColor: theme.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
-    elevation: 2,
+    elevation: 4,
     shadowColor: theme.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
   },
   saveBtnText: {
     color: '#fff',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  zenModeBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  zenModeModal: {
+    alignSelf: 'stretch',
+    height: '80%',
+    backgroundColor: theme.cardBg,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: theme.border,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  zenModeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  zenModeTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: theme.text,
+  },
+  zenModeTextArea: {
+    flex: 1,
+    backgroundColor: theme.inputBg,
+    color: theme.text,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 12,
+    padding: 20,
+    fontFamily: 'monospace',
     fontSize: 16,
-    fontWeight: 'bold',
+    lineHeight: 24,
   },
 });
 

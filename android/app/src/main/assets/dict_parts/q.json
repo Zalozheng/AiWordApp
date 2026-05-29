@@ -1,0 +1,1 @@
+{"R:q":{"deep_origin":"代表特定状态下采取某动作的预期累计回报值","derivatives":["deep-q-network","dqn","gptq"],"id":"R:q","lookup_count":0,"meaning":"Quality(质量)","segment":"q","type":"词根","updated_at":1779840349746}}

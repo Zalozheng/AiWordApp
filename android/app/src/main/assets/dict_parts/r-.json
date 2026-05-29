@@ -1,0 +1,1 @@
+{"R:r-cnn":{"deep_origin":"Region-based CNN，基于候选区域提取特征的深度学习目标检测架构","derivatives":["mask-rcnn"],"id":"R:r-cnn","lookup_count":0,"meaning":"区域卷积神经网络","segment":"r-cnn","type":"词根","updated_at":1779840349769}}

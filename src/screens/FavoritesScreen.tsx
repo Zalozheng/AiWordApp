@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  Switch,
   FlatList,
   SafeAreaView,
   StatusBar,
@@ -17,6 +18,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { Picker } from '@react-native-picker/picker';
+import Tts from 'react-native-tts';
+import { PanResponder } from 'react-native';
 
 import { LightTheme, DarkTheme } from '../utils/theme';
 import { safeSetItem } from '../utils/storage';
@@ -59,7 +62,9 @@ const FavoritesScreen = () => {
   const [starredRoots, setStarredRoots] = useState<any[]>([]);
 
   // Flashcards Study states
-  const [selectedFolderId, setSelectedFolderId] = useState('all_words'); // all_words, all_roots, or folderId
+  const [selectedFolderId, setSelectedFolderId] = useState('all_words');
+  const [studyMode, setStudyMode] = useState('both'); // both, word_only, root_only
+  const [isShuffle, setIsShuffle] = useState(true); // all_words, all_roots, or folderId
   const [selectedStatus, setSelectedStatus] = useState('all'); // all, learned, review
   const [deck, setDeck] = useState<Flashcard[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -119,19 +124,13 @@ const FavoritesScreen = () => {
   );
 
   // Audio Pronunciation TTS
-  const playSound = (text: string) => {
+  const playSound = async (text: string) => {
     try {
-      const globalAny = globalThis as any;
-      if (typeof globalAny.speechSynthesis !== 'undefined') {
-        globalAny.speechSynthesis.cancel();
-        const utterance = new globalAny.SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
-        globalAny.speechSynthesis.speak(utterance);
-      } else {
-        Alert.alert('语音朗读', `🔊 [发音]: ${text}`);
-      }
-    } catch {
-      Alert.alert('语音朗读', `🔊 [发音]: ${text}`);
+      Tts.stop();
+      await Tts.setDefaultLanguage('en-US');
+      Tts.speak(text);
+    } catch (e) {
+      console.log('TTS Error', e);
     }
   };
 
@@ -140,7 +139,7 @@ const FavoritesScreen = () => {
     let rawCards: Flashcard[] = [];
 
     // 1. Merge words
-    if (selectedFolderId === 'all_words' || selectedFolderId !== 'all_roots') {
+    if (studyMode !== 'root_only' && (selectedFolderId === 'all_words' || selectedFolderId !== 'all_roots')) {
       const matchedWords = starredWords.filter((w) => {
         // Folder check
         if (selectedFolderId !== 'all_words') {
@@ -168,7 +167,7 @@ const FavoritesScreen = () => {
     }
 
     // 2. Merge roots
-    if (selectedFolderId === 'all_roots' || selectedFolderId !== 'all_words') {
+    if (studyMode !== 'word_only' && (selectedFolderId === 'all_roots' || selectedFolderId !== 'all_words')) {
       const matchedRoots = starredRoots.filter((r) => {
         // Folder check
         if (selectedFolderId !== 'all_roots') {
@@ -201,7 +200,7 @@ const FavoritesScreen = () => {
     }
 
     // Shuffle the deck
-    rawCards.sort(() => Math.random() - 0.5);
+    if (isShuffle) { rawCards.sort(() => Math.random() - 0.5); }
 
     setDeck(rawCards);
     setCurrentCardIndex(0);
@@ -247,6 +246,25 @@ const FavoritesScreen = () => {
     }
   };
 
+    // Pan Responder for swiping cards
+  const panResponder = React.useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (evt, gestureState) => {
+      return Math.abs(gestureState.dx) > 20; // Only trigger if swiped left/right
+    },
+    onPanResponderRelease: (evt, gestureState) => {
+      if (!isStudying || studyCompleted) return;
+      if (gestureState.dx > 50) {
+        // Swiped Right -> Remembered
+        handleRemember();
+      } else if (gestureState.dx < -50) {
+        // Swiped Left -> Forgot
+        handleForget();
+      }
+    }
+  }), [isStudying, studyCompleted, currentCardIndex, flipped]); // Need to make sure handlers get latest state? Wait, we can use refs or handleRemember without deps if they use setScore(prev) and setCurrentCardIndex(prev).
+  
+  // Let's refactor handleRemember / handleForgot to use functional state updates if not already, or we can just attach panResponder to the View.
   // User remembered the card
   const handleRemember = async () => {
     const currentCard = deck[currentCardIndex];
@@ -497,6 +515,25 @@ const FavoritesScreen = () => {
                   </Picker>
                 </View>
 
+                                <Text style={styles.setupLabel}>过滤模式 (单词/词根分离)</Text>
+                <View style={styles.pickerWrapper}>
+                  <Picker
+                    selectedValue={studyMode}
+                    style={{ color: theme.text }}
+                    dropdownIconColor={theme.primary}
+                    onValueChange={(val) => setStudyMode(val)}
+                  >
+                    <Picker.Item label="📚🌱 单词和词根全学 (Both)" value="both" />
+                    <Picker.Item label="📚 仅学单词 (Words Only)" value="word_only" />
+                    <Picker.Item label="🌱 仅学词根 (Roots Only)" value="root_only" />
+                  </Picker>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}>
+                  <Text style={[styles.setupLabel, { marginBottom: 0 }]}>🔀 打乱随机顺序 (Shuffle)</Text>
+                  <Switch value={isShuffle} onValueChange={setIsShuffle} />
+                </View>
+
                 {/* Dashboard Stats */}
                 <View style={styles.quickStatsRow}>
                   <View style={styles.quickStatBox}>
@@ -562,6 +599,7 @@ const FavoritesScreen = () => {
                 activeOpacity={0.9}
                 style={[styles.card, flipped && styles.cardFlipped]}
                 onPress={() => setFlipped(!flipped)}
+                {...panResponder.panHandlers}
               >
                 {!flipped ? (
                   /* FRONT of the card */
@@ -865,15 +903,15 @@ const getStyles = (theme: any) => StyleSheet.create({
   startBtn: {
     backgroundColor: theme.primary,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
+    elevation: 6,
     shadowColor: theme.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    marginTop: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    marginTop: 12,
   },
   startBtnText: {
     color: '#fff',
@@ -1029,10 +1067,13 @@ const getStyles = (theme: any) => StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     height: 52,
-    borderRadius: 14,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
+    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
     gap: 8,
   },
   forgotBtn: {
@@ -1105,8 +1146,8 @@ const getStyles = (theme: any) => StyleSheet.create({
   actionBtnBlock: {
     width: '100%',
     backgroundColor: theme.border,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 14,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
