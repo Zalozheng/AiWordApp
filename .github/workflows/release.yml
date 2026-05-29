@@ -51,6 +51,20 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace --info
 
+      - name: 📋 上传 Gradle Daemon 日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-daemon-logs
+          path: ~/.gradle/daemon/
+
+      - name: 📋 上传 Build 报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: android/build/reports/
+
       - name: 🚀 将打包出的 APK 作为产物保存
         uses: actions/upload-artifact@v4
         with:
