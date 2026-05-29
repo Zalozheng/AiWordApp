@@ -1,97 +1,83 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# AiWord 词根引擎 🚀
 
-# Getting Started
+**AiWord** 是一款面向硬核学习者、英语极客和考研党的**全新一代英语词根词源解析与特训工具**。
+它摒弃了传统词典死记硬背的局限，首创了**“极速本地词库 + 智能大模型穿透”**的混合架构引擎。
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+无论是挖掘单字的“前世今生”、追踪千丝万缕的“同源派生树”，还是利用沉浸式的左右划卡功能背单词，AiWord 都能为你提供最顶级的学习体验。
 
-## Step 1: Start Metro
+---
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## 🌟 核心亮点 (Features)
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+### 🧠 1. 混合解析引擎 (Hybrid Engine)
+- **毫秒级本地响应**：内置海量且可由用户自行扩展的本地词汇与词根库。查询命中即瞬间返回解析。
+- **大模型穿透 (LLM Integration)**：如果你查询的词较为生僻或词库中未收录，App 会自动呼叫绑定的顶尖 AI 大模型（如 DeepSeek, OpenAI），为你即时生成最地道的词源解析。
 
-```sh
-# Using npm
-npm start
+### 🌳 2. 无限派生树 (Derivation Tree)
+- 每个词根都不再是一座孤岛。
+- AiWord 会根据图谱算法，将同源词和派生词结构化地呈现出来，帮你实现“顺藤摸瓜，一生二，二生十”的词汇量暴增。
 
-# OR using Yarn
-yarn start
+### 🎭 3. AI 情景人格切换 (Contexts)
+- **多重人设**：随时在顶部切换“日常”、“极客”、“考研”甚至“文明6”等情景。
+- AI 会根据你选定的角色，改变解析口吻、例句风格和联想记忆法，让背单词变成看故事。
+
+### ⭐ 4. 沉浸式特训场 (Tinder-style Flashcards)
+- 遇到硬骨头直接“收藏”。
+- 在底部【收藏夹】中，你可以开启类似 Tinder 的左右划卡（左划忘记，右划掌握）沉浸式背词。
+- 完美支持纯净词根模式、发音朗读 (TTS)、乱序特训。
+
+### 📴 5. 极客级的本地优先 (Local-First)
+- **完全支持离线断网运行**。
+- 所有的数据、查询历史和收藏记录均保存在手机本地沙盒中。
+- 提供“一键直链更新”、“JSON 导入”等开发者级别的数据维护通道，把词库的掌控权完全交还给用户。
+
+---
+
+## 📥 下载与安装
+
+请前往本仓库的 [**Releases**](../../releases) 页面，下载最新的安装包。
+
+由于 React Native 打包机制优化，我们为你提供了针对不同手机架构的分包，以最大程度缩小安装包体积并提升性能：
+
+1. `app-arm64-v8a-release.apk`：**推荐绝大多数用户下载**。适配所有近几年的现代安卓手机（64位处理器）。
+2. `app-armeabi-v7a-release.apk`：适配较旧款或低配版的安卓手机。
+3. `app-universal-release.apk`：通用兼容包，体积较大，但能在任意安卓设备上安装运行。
+
+*(如果不知道选哪个，直接下载 `arm64-v8a` 即可。)*
+
+---
+
+## 🛠 开发与构建指南
+
+如果你想参与本项目开发或自行构建词库，请遵循以下流程。
+
+### 环境准备
+- Node.js (v18+)
+- Java (JDK 17)
+- Android Studio / Android SDK
+
+### 安装依赖
+```bash
+git clone https://github.com/你的名字/AiWordApp.git
+cd AiWordApp
+npm install
 ```
 
-## Step 2: Build and run your app
-
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+### 本地打包构建词库
+本 App 采用了高性能的字典树切片架构。在编译新版词库前，请确保执行此脚本将你的超大 JSON 自动切割为可供 Android 极速读取的碎片：
+```bash
+node build_dict.js word.json
 ```
 
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
+### 编译 APK
+```bash
+cd android
+./gradlew assembleRelease
 ```
+生成的 APK 产物将位于 `android/app/build/outputs/apk/release/` 目录下。
 
-Then, and every time you update your native dependencies, run:
+---
 
-```sh
-bundle exec pod install
-```
+## 📜 许可证 (License)
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+本项目采用 MIT License。你可以自由地使用、修改和分发，但请保留原作者归属。
