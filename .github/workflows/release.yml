@@ -3,8 +3,8 @@ name: Build and Release Android APK
 on:
   push:
     tags:
-      - 'v*' # 只有当你打上以 v 开头的 tag 时才会触发自动打包发布，比如 v1.0.0
-  workflow_dispatch: # 这个允许你在 GitHub 网页上手动点击按钮触发打包
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-android:
@@ -38,11 +38,7 @@ jobs:
       - name: 📦 安装 NPM 依赖
         run: npm install
 
-      # 【如果你不在本地传 assets 切片，想让云端自己算词库，取消注释下面这行。但通常建议你在本地跑完提交切片】
-      # - name: 📚 生成本地词库切片 (可选)
-      #   run: node build_dict.js word.json
-
-      - name: 🔑 生成临时的 Debug Keystore (防止丢失签名导致打包失败)
+      - name: 🔑 生成临时的 Debug Keystore
         run: |
           cd android/app
           if [ ! -f "debug.keystore" ]; then
@@ -53,7 +49,7 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace --info
 
       - name: 🚀 将打包出的 APK 作为产物保存
         uses: actions/upload-artifact@v4
@@ -72,7 +68,7 @@ jobs:
             * 🧠 **混合架构引擎**：本地词库毫秒级响应 + 大模型穿透解析。
             * 🌳 **无限派生树**：基于图谱的词源拆解与派生记忆。
             * ⭐ **特训卡片**：支持沉浸式左右划卡背单词、TTS 语音与乱序特训。
-            * 🤖 **AI 多重人设**：支持一键切换“极客”、“考研”等不同情景模式。
+            * 🤖 **AI 多重人设**：支持一键切换"极客"、"考研"等不同情景模式。
             * 📴 **极客隐私**：脱机也能用，支持手动导入导出海量 JSON 词库。
             
             ### 📦 下载指南 (请根据你的手机架构选择)
