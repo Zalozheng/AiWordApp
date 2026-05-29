@@ -42,11 +42,18 @@ jobs:
       # - name: 📚 生成本地词库切片 (可选)
       #   run: node build_dict.js word.json
 
+      - name: 🔑 生成临时的 Debug Keystore (防止丢失签名导致打包失败)
+        run: |
+          cd android/app
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
       - name: 🔨 编译 Android Release APK
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace --info
 
       - name: 🚀 将打包出的 APK 作为产物保存
         uses: actions/upload-artifact@v4
