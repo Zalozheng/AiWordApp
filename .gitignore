@@ -1,59 +1,40 @@
-# Check out https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# React Native
+.expo/
+__pycache__/
+*.jsbundle
+.bundle
 
-# testing
-/coverage
+# Android
+android/.gradle
+android/app/build
+android/build
+android/local.properties
+android/.idea
+*.iml
+*.hprof
 
-# next.js
-/.next/
-/out/
+# iOS
+ios/build/
+ios/Pods/
+ios/Podfile.lock
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
 
-# production
-/build
-
-# misc
+# macOS / OS
 .DS_Store
-*.pem
+*.swp
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-
-# react-native android/ios specific ignores
-.gradle
-/android/app/build
-/android/build
-/android/.gradle
-/ios/build
-/ios/Pods
-/ios/DerivedData
-/ios/.xcode.env.local
-
-# Android local files and caches
-/android/local.properties
-/android/.kotlin
-/android/app/.cxx
-/android/gradle/gradle-daemon-jvm.properties
-
-# IDEs
+# IDE
 .idea/
 .vscode/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+
+# 词库生成脚本临时文件及巨型原文件 (防止意外推送几十MB的源文件导致卡死)
+word.json
+roots.json
+模版.json
+*.bin
