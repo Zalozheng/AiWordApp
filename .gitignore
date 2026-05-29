@@ -43,6 +43,12 @@ yarn-error.log*
 /ios/DerivedData
 /ios/.xcode.env.local
 
+# Android local files and caches
+/android/local.properties
+/android/.kotlin
+/android/app/.cxx
+/android/gradle/gradle-daemon-jvm.properties
+
 # IDEs
 .idea/
 .vscode/
